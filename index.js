@@ -5,7 +5,6 @@ const Composer = require('telegraf/composer')
 const session = require('telegraf/session')
 const Stage = require('telegraf/stage')
 const Scene = require('telegraf/scenes/base')
-const Markup = require('telegraf/markup')
 const Extra = require('telegraf/extra')
 var amqp = require('amqplib/callback_api');
 require('dotenv').config()
@@ -35,6 +34,7 @@ startScene.enter(async (ctx) => {
   else {
     ctx.scene.enter('start-scan')
   }
+  await mongoClient.close();
 })
 
 checkStatus = async (usr) => {
@@ -43,10 +43,11 @@ checkStatus = async (usr) => {
     const db = mongoClient.db(dbName)
     const colUsers = db.collection('users')
     if ((Date.parse(usr.nextpay)) < Date.parse(new Date())){
-    colUsers.updateOne({userId: usr.userId}, {$set: {status: 'unpaid'}}, {upsert: true})
+      await colUsers.updateOne({userId: usr.userId}, {$set: {status: 'unpaid'}}, {upsert: true})
     } else {
-      colUsers.updateOne({userId: usr.userId}, {$set: {status: 'paid'}}, {upsert: true})
+      await colUsers.updateOne({userId: usr.userId}, {$set: {status: 'paid'}}, {upsert: true})
     }
+    await mongoClient.close();
     } catch(e) {
       console.log(e)
     }
@@ -66,13 +67,14 @@ scanScene.enter(async (ctx) => {
     await colUsers.updateOne({userId: ctx.from.id}, {$set: {userId: ctx.from.id, name: ctx.from.first_name+" "+ctx.from.last_name, promoDate: date, nextpay: nextPay, payment: '500 р', status: 'paid'}}, {upsert: true})
     await ctx.reply('Зайдите на avito.ru с браузера, зайдите в категорию "Недвижимость" и выберите необходимую подкатегорию (Например, недвижимость в новостройках или квартиры посуточно) настройте параметры поиска и отправьте мне ссылку:');
   } else {
-    checkStatus(currentUser)
+    await checkStatus(currentUser)
     if (currentUser.status == 'paid'){
       await ctx.reply('Зайдите на avito.ru с браузера, зайдите в категорию "Недвижимость" и выберите необходимую подкатегорию (Например, недвижимость в новостройках или квартиры посуточно) настройте параметры поиска и отправьте мне ссылку:');
     } else {
       await ctx.reply('К сожалению, необходимо пополнить баланс. Команда /pay подскажет вам, как можно оплатить.')
     }
   }
+  mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -85,6 +87,7 @@ startScene.action('startpromo', (ctx) => {
 
 
 scanScene.hears(/avito.ru/, async (ctx) => {
+  try {
   await mongoClient.connect();
   const db = mongoClient.db(dbName)
   const colUsers = db.collection('users')
@@ -104,6 +107,10 @@ scanScene.hears(/avito.ru/, async (ctx) => {
   } else {
     await ctx.reply('К сожалению, необходимо пополнить баланс. Команда /pay подскажет вам, как можно оплатить.')
   }
+  await mongoClient.close();
+} catch(e) {
+  console.log(e)
+}
 })
 
 loadWorker = (msg, userId, proxyId) => {
@@ -149,44 +156,59 @@ scanScene.action('scan', async (ctx) => {
     let findNotBusy = await colProxy.findOne({"counts":{$lte:1}})
     if (!findNotBusy) { // При достаточном количестве консюмеров и проксей, это условие вообще не должно выполняться. Если выполняется, нужно добавить прокси или консьюмеры
       ctx.reply('Занято, попробуйте позже');
-      mongoClient.close();
+      await mongoClient.close();
     } else if (findNotBusy.counts < 1) {
       let date = new Date();
-      // let checkUserId = await colProxy.findOne({proxyId: findNotBusy.proxyId})
-      await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin: date.getMinutes(), startSec: date.getSeconds(), counts: 1, link1: msg}}, {upsert:true})
+      await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin1: date.getMinutes(), startSec1: date.getSeconds(), counts: 1, link1: msg}}, {upsert:true})
       await ctx.reply('Запускаем')
       loadWorker(msg, userId, findNotBusy.proxyId);
       await colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
       await ctx.scene.leave()
-      mongoClient.close();
+      await mongoClient.close();
     }
 
     else if (findNotBusy.counts == 1) { // Если один скрипт на проксе уже запущен
-      // let checkUserId = await colProxy.findOne({proxyId: findNotBusy.proxyId})
       let nowDate = new Date();
 
-      if (findNotBusy.startMin) { // Проверяем, запущен ли первый скрипт. Если да, то заполняем второй...
+      if (findNotBusy.startMin1) { // Проверяем, запущен ли первый скрипт. Если да, то заполняем второй...
       let minute = 1;
-      if (findNotBusy.startMin%2 != nowDate.getMinutes()%2) minute = 60; // Проверяем чтоб второй скрипт запустился в следующую минуту
-      let sleepTime = 60 - nowDate.getSeconds() + findNotBusy.startSec;
-      if (findNotBusy.startSec != nowDate.getSeconds()) { // Если сохраненная секунда не равна текущей, то ждем еще минуту...
-          await ctx.reply('Запускаем..');
-          setTimeout(async () => {
+      if (findNotBusy.startMin1%2 != nowDate.getMinutes()%2) minute = 60; // Проверяем чтоб второй скрипт запустился в следующую минуту
+      let sleepTime = 60 - nowDate.getSeconds() + findNotBusy.startSec1;
+      if (findNotBusy.startSec1 != nowDate.getSeconds()) { // Если сохраненная секунда не равна текущей, то ждем еще минуту...
+          ctx.reply('Запускаем..');
           let Date2 = new Date();
-          await loadWorker(msg, userId, findNotBusy.proxyId);          
-          await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds(), counts: 2, link2: msg}}, {upsert:true})
-          await colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
-          await ctx.scene.leave();
+          try {
+          colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds(), counts: 2, link2: msg}}, {upsert:true})
+          .then(() => console.log("itsok"),
+          (err) => console.log('itserr: ' + err))
+
+          colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
+          .then(() => console.log("itsok"),
+          (err) => console.log('itserr: ' + err))
+          } catch (e) {
+            console.log(e)
+          }
+          setTimeout(() => {
+          loadWorker(msg, userId, findNotBusy.proxyId);
+          ctx.scene.leave();
           }, (sleepTime + minute)*1000) // Ставим отложенный старт на определенное кол-во сек.
         }
         else { // ... Иначе, запускаем прямо сейчас, при условии что совпадает четность у сохраненной и текущей минут. 
-          await ctx.reply('Запускаем..');
-          setTimeout(async () => {
+          ctx.reply('Запускаем..');
           let Date2 = new Date();
-          await loadWorker(msg, userId, findNotBusy.proxyId);
-          await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds(), counts: 2, link2: msg}}, {upsert:true})
-          await colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
-          await ctx.scene.leave();
+          try {
+          colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds(), counts: 2, link2: msg}}, {upsert:true})
+          .then(() => console.log("itsok"),
+          (err) => console.log('itserr: ' + err))
+          colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
+          .then(() => console.log("itsok"),
+          (err) => console.log('itserr: ' + err))
+          } catch (e) {
+            console.log(e)
+          }
+          setTimeout(() => {
+          loadWorker(msg, userId, findNotBusy.proxyId);
+          ctx.scene.leave();
           }, (minute)*1000)
         }
       } else { // ... Если нет, заполняем первый
@@ -194,23 +216,39 @@ scanScene.action('scan', async (ctx) => {
           if (findNotBusy.startMin2%2 != nowDate.getMinutes()%2) minute = 60; // Проверяем чтоб второй скрипт запустился в следующую минуту
           let sleepTime = 60 - nowDate.getSeconds() + findNotBusy.startSec2;
           if (findNotBusy.startSec2 != nowDate.getSeconds()) { // Если сохраненная секунда не равна текущей, то ждем еще минуту...
-            await ctx.reply('Запускаем..');
-            setTimeout(async () => {
+            ctx.reply('Запускаем..');
             let Date2 = new Date();
-            await loadWorker(msg, userId, findNotBusy.proxyId);
-            await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin: Date2.getMinutes(), startSec: Date2.getSeconds(), counts: 2, link1: msg}}, {upsert:true})
-            await colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
-            await ctx.scene.leave();
+            try {
+            colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin1: Date2.getMinutes(), startSec1: Date2.getSeconds(), counts: 2, link1: msg}}, {upsert:true})
+            .then(() => console.log("itsok"),
+            (err) => console.log('itserr: ' + err))
+            colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
+            .then(() => console.log("itsok"),
+            (err) => console.log('itserr: ' + err))
+            } catch (e) {
+              console.log(e)
+            }
+            setTimeout(() => {
+            loadWorker(msg, userId, findNotBusy.proxyId);
+            ctx.scene.leave();
             }, (sleepTime + minute)*1000) // Ставим отложенный старт на определенное кол-во сек.
           }
           else { // ... Иначе, запускаем прямо сейчас, при условии что совпадает четность у сохраненной и текущей минут. 
-            await ctx.reply('Запускаем..');
-            setTimeout(async () => {
+            ctx.reply('Запускаем..');
             let Date2 = new Date();
-            await loadWorker(msg, userId, findNotBusy.proxyId);
-            await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin: Date2.getMinutes(), startSec: Date2.getSeconds(), counts: 2, link1: msg}}, {upsert:true})
-            await colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
-            await ctx.scene.leave();
+            try {
+            colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin1: Date2.getMinutes(), startSec1: Date2.getSeconds(), counts: 2, link1: msg}}, {upsert:true})
+            .then(() => console.log("itsok"),
+            (err) => console.log('itserr: ' + err))
+            colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
+            .then(() => console.log("itsok"),
+            (err) => console.log('itserr: ' + err))
+            } catch (e) {
+              console.log(e)
+            }
+            setTimeout(() => {
+            loadWorker(msg, userId, findNotBusy.proxyId);
+            ctx.scene.leave();
             }, (minute)*1000)
           }
       }
@@ -230,7 +268,7 @@ bot.command('stop', async (ctx) => {
       const db = mongoClient.db(dbName)
       const colUsers = db.collection('users')
       await colUsers.updateOne({userId: ctx.from.id}, {$set: {stop: 1}})
-      mongoClient.close();
+      await mongoClient.close();
     } catch(e) {
       console.log(e)
     }
@@ -243,7 +281,7 @@ bot.command('pay', async (ctx) => {
 
 bot.command('status', async (ctx) => {
   try {
-  mongoClient.connect();
+  await mongoClient.connect();
   const db = mongoClient.db(dbName)
   const colUsers = db.collection('users')
   let user = await colUsers.findOne({userId: ctx.from.id})
@@ -256,6 +294,7 @@ bot.command('status', async (ctx) => {
   } else {
   ctx.replyWithHTML("Статус аккаунта: <b>" + status + "</b>\n" + "Оплатить ДО: 🕓 <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'})+ "</b>" + "\nАбонентская плата: 💵 <b>" + user.payment + "</b>\n" + "Текущая ссылка: 🔗 " + user.link + "\n\nВоспользуйтесь командой /pay, чтобы узнать, как можно оплатить доступ.")
   }
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -267,7 +306,7 @@ admin.command("glu", async (ctx) => { // /getlastusers
   
   let com = ctx.message.text.split(' ').slice(1)
   try {
-  mongoClient.connect();
+  await mongoClient.connect();
   const db = mongoClient.db(dbName)
   const colUsers = db.collection('users')
   let arr2 = await colUsers.find({}).map((res)=>{
@@ -291,6 +330,7 @@ admin.command("glu", async (ctx) => { // /getlastusers
     msg += i
   }
   ctx.replyWithHTML(msg)
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -299,7 +339,7 @@ admin.command("glu", async (ctx) => { // /getlastusers
 admin.command('au', async (ctx) => { // /adduser
   let com = ctx.message.text.split(' ').slice(1)
   try {
-  mongoClient.connect();
+  await mongoClient.connect();
   const db = mongoClient.db(dbName)
   const colUsers = db.collection('users')
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
@@ -310,24 +350,25 @@ admin.command('au', async (ctx) => { // /adduser
   updatedUser.status == 'paid' ? status = 'Оплачено' : status = 'Не оплачено'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "UserID: <b>" + updatedUser.userId + "</b>\n" + "Имя: <b>" + updatedUser.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>"
   ctx.replyWithHTML(msg)
-
+  await mongoClient.close();
   } catch (e) {console.log(e)}
 })
 
 admin.command('gu', async (ctx) => { // /getuser
   let com = ctx.message.text.split(' ').slice(1)
   try {
-  mongoClient.connect();
+  await mongoClient.connect();
   const db = mongoClient.db(dbName)
   const colUsers = db.collection('users')
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
-  checkStatus(user);
+  await checkStatus(user);
   let date = new Date(user.nextpay)
   let promoDate = new Date(user.promoDate)
   let status
   user.status == 'unpaid' ? status = 'Не оплачено' : status = 'Оплачено'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" +"UserID: <b>" + user.userId + "</b>\n" + "Имя: <b>" + user.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Дата начала промо: <b>" + promoDate.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Платеж: <b>" + user.payment + "</b>\n" + "Ссылка: " + user.link + "\n" + "ID прокси: " + user.proxyId
   ctx.replyWithHTML(msg)
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -336,13 +377,13 @@ admin.command('gu', async (ctx) => { // /getuser
 admin.command('ap', async (ctx) => { // /addpromo
   let com = ctx.message.text.split(' ').slice(1)
   try {
-  mongoClient.connect();
+  await mongoClient.connect();
   const db = mongoClient.db(dbName)
   const colUsers = db.collection('users')
   let hour = Number.parseInt(com[1]) * 3600000
   await colUsers.updateOne({userId: Number.parseInt(com[0])}, {$set: {promoDate: new Date(Date.now()), nextpay: new Date(Date.now()+hour)}})
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
-  checkStatus(user)
+  await checkStatus(user)
 
   let updatedUser = await colUsers.findOne({userId: Number.parseInt(com[0])})
   let date = new Date(updatedUser.promoDate)
@@ -351,6 +392,7 @@ admin.command('ap', async (ctx) => { // /addpromo
   updatedUser.status == 'unpaid' ? status = 'Не оплачено' : status = 'Оплачено'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "UserID: <b>" + updatedUser.userId + "</b>\n" + "Имя: <b>" + updatedUser.name + "</b>\n" + "Промо обновлено: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Следующий платеж: <b>" + nextPay.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n"
   ctx.replyWithHTML(msg)
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -367,6 +409,7 @@ admin.command('all', async (ctx) => {
       tgbot.sendMessage(res.userId, msg)
     }, 300)
   }).toArray()
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -378,8 +421,9 @@ admin.command('gp', async (ctx) => {
   const db = mongoClient.db(dbName)
   const colProxy = db.collection('proxy')
   colProxy.find({}).map((res) => {
-    return ctx.replyWithHTML("proxyId: <b>" + res.proxyId + "</b>\n" + "counts: <b>" + res.counts + "</b>\n" + "startMin1: <b>" + res.startMin + "</b>\n" + "startSec1: <b>" + res.startSec + "</b>\n" + "userId1: <b>" + res.userId1 + "</b>\n" + "link1: " + res.link1 + "\n" + "startMin2: <b>" + res.startMin2 + "</b>\n" + "startSec2: <b>" + res.startSec2 + "</b>\n" + "userId2: <b>" + res.userId2 + "</b>\n" + "link2: " + res.link2, {disable_web_page_preview:'true'})
+    return ctx.replyWithHTML("proxyId: <b>" + res.proxyId + "</b>\n" + "counts: <b>" + res.counts + "</b>\n" + "startMin1: <b>" + res.startMin1 + "</b>\n" + "startSec1: <b>" + res.startSec1 + "</b>\n" + "userId1: <b>" + res.userId1 + "</b>\n" + "link1: " + res.link1 + "\n" + "startMin2: <b>" + res.startMin2 + "</b>\n" + "startSec2: <b>" + res.startSec2 + "</b>\n" + "userId2: <b>" + res.userId2 + "</b>\n" + "link2: " + res.link2, {disable_web_page_preview:'true'})
   }).toArray()
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -394,6 +438,7 @@ admin.command('ban', async (ctx) => {
   await colUsers.updateOne({userId: Number.parseInt(com[0])}, {$set: {ban: 1}}, {upsert: true})
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
   ctx.replyWithHTML('Пользователь ' + com[0] + ' забанен. ' + 'user.ban: ' + user.ban)
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -408,6 +453,7 @@ admin.command('unban', async (ctx) => {
   await colUsers.updateOne({userId: Number.parseInt(com[0])}, {$set: {ban: ""}}, {upsert: true})
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
   ctx.replyWithHTML('Пользователь ' + com[0] + ' разбанен. ' + 'user.ban: ' + user.ban)
+  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -418,7 +464,6 @@ admin.command('help', (ctx) => {
 })
 
 
-// bot.on('text', ctx => ctx.reply('example',{reply_markup:{keyboard:[['Button1','Button2'],['Button3','Button4']], resize_keyboard:true}}))
 var anyuser = new Composer();
 anyuser.command('help', (ctx) => {
   ctx.replyWithHTML('<b>/start</b> - запуск Сканера.\n\n<b>/stop</b> - остановка Сканера.\n\n<b>/status</b> - текущий статус Вашего аккаунта.\n\n<b>/pay</b> - узнать о том, как оплатить.\n\n<b>/help</b> - показать все доступные команды')

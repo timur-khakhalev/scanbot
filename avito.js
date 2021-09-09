@@ -1,5 +1,6 @@
 const cheerio = require('cheerio');
 const axios = require('axios');
+const randomUA = require('random-useragent')
 const Telegram = require('telegraf/telegram');
 require('dotenv').config()
 const worker = require('./worker')
@@ -35,32 +36,43 @@ startScan = (parseLink, chatId, idProxy) => {
         let checkUserId1 = await colProxy.findOne({userId1: Number.parseInt(chatId)})
         let checkUserId2 = await colProxy.findOne({userId2: Number.parseInt(chatId)})
         if (checkUserId1) {
-            await colProxy.updateOne({proxyId: Number.parseInt(idProxy)},{$set: {userId1: "", link1: "", startMin: "", startSec: ""}})
+            await colProxy.updateOne({proxyId: Number.parseInt(idProxy)},{$set: {userId1: "", link1: "", startMin1: "", startSec1: ""}}, {upsert: true})
             await colProxy.updateOne({proxyId: Number.parseInt(idProxy)},{$inc: {counts: -1}})
         }
         if (checkUserId2) {
-            await colProxy.updateOne({proxyId: Number.parseInt(idProxy)},{$set: {userId2: "", link2: "",  startMin2: "", startSec2: ""}})
+            await colProxy.updateOne({proxyId: Number.parseInt(idProxy)},{$set: {userId2: "", link2: "",  startMin2: "", startSec2: ""}}, {upsert: true})
             await colProxy.updateOne({proxyId: Number.parseInt(idProxy)},{$inc: {counts: -1}})
         }
-        await colUsers.updateOne({userId: Number.parseInt(chatId)}, {$set: {proxyId: "", link: "", stop: 0}})
-        if ((Date.parse(checkStop.nextpay) < Date.parse(dateNow))) await colUsers.updateOne({userId: Number.parseInt(chatId)}, {$set: {status: 'unpaid'}})
+        await colUsers.updateOne({userId: Number.parseInt(chatId)}, {$set: {proxyId: "", link: "", stop: 0}}, {upsert: true})
+        if ((Date.parse(checkStop.nextpay) < Date.parse(dateNow))) await colUsers.updateOne({userId: Number.parseInt(chatId)}, {$set: {status: 'unpaid'}}, {upsert: true})
     }
     let user = await colUsers.findOne({userId: Number.parseInt(chatId)})
 
     newAds.length = 0;
+    await mongoClient.close();
 getAds = async () => {
     
     let logTime = new Date()
-    console.log('Iteration. storedAds.size=' + storedAds.size + " proxy id: " + idProxy + " link: " + parseLink + "\ntime: m:" + logTime.getMinutes() + ":s" + logTime.getSeconds())
+    console.log('Iteration. storedAds.size=' + storedAds.size + " proxy id: " + idProxy + " link: " + parseLink + "\ntime: " +  + logTime.getHours().toLocaleString() + ":" + logTime.getMinutes() + ":" + logTime.getSeconds())
     let agent = new httpsProxyAgent(`http://${getProxy.login}:${getProxy.password}@${getProxy.host}:${getProxy.port}`);
     try {
     let getHTML = async (parseLink) => {
         let {data} = await axios({
             url: parseLink,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36'
+                'User-Agent': randomUA.getRandom((ua) => {
+                    return ua.osName === 'Windows' && ua.osVersion === '10' && ua.browserName === 'Chrome';
+                })
             },
             httpsAgent: agent
+        }).catch(e => {
+            if(e.response.status >= 500) {
+                setTimeout(()=>{
+                    console.log('trying again!')
+                    getHTML(parseLink)
+                }, 5000)
+            }
+            console.log(e.message)
         })
         return cheerio.load(data);
     } 
@@ -78,7 +90,6 @@ getAds = async () => {
                 usertype: $(elem).find('div[class^=iva-item-user]').children('span:first').text()
             }
             newAds.push(somedata);
-            // console.log(newAds[i])
         })
         return newAds
         } catch (e) {
@@ -94,16 +105,11 @@ getAds().then(newAds => {
             storedAds.add(i.link);            
         }
         try {
-        // async () => {
-        // mongoClient.connect();
-        // const colUsers = db.collection('users')
-        // let user = await colUsers.findOne({userId: chatId})
         if (user.link) {
         let TgMsg = `Я проверил страницу и жду новых объявлений! Если вы хотите остановить работу Сканнера, отправьте команду /stop`;
         bot.sendMessage(chatId, TgMsg, {parse_mode: 'HTML'})
         newAds.length = 0;
         }
-    // }
         } catch (e) {
             console.log(e)
         }
@@ -129,11 +135,14 @@ getAds().then(newAds => {
 });
 };
 mainAds();
-stopScan = setInterval(mainAds, 120000);
+stopScan = setInterval(mainAds, (() => {
+  min = Math.ceil(115000);
+  max = Math.floor(125000);
+  return Math.floor(Math.random() * (max - min)) + min;
+})());
 };
 
 module.exports.startScan = startScan;
-
 
 let stopScript = () => {console.log("Останавливаем из скрипта");clearTimeout(stopScan);storedAds.clear();}
 
