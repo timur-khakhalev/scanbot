@@ -259,7 +259,7 @@ scanScene.action('scan', async (ctx) => {
           }
       }
     }
-} catch (e) {console.log(e)}
+} catch (e) {console.log(e)} 
 })
 
 const stage = new Stage([startScene, scanScene])
@@ -338,9 +338,10 @@ admin.command("glu", async (ctx) => { // /getlastusers
     msg += i
   }
   ctx.replyWithHTML(msg)
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
+  } finally{
+    mongoClient.close()
   }
 })
 
@@ -358,8 +359,10 @@ admin.command('au', async (ctx) => { // /adduser
   updatedUser.status == 'paid' ? status = '✅ Оплачено' : status = '❌ Не оплачено'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "UserID: <b>" + updatedUser.userId + "</b>\n" + "Имя: <b>" + updatedUser.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>"
   ctx.replyWithHTML(msg)
-  await mongoClient.close();
   } catch (e) {console.log(e)}
+  finally{
+    mongoClient.close()
+  }
 })
 
 admin.command('gu', async (ctx) => { // /getuser
@@ -375,12 +378,13 @@ admin.command('gu', async (ctx) => { // /getuser
   let status
   user.status == 'paid' ? status = '✅ Оплачено' : status = '❌ Не оплачено'
   let active
-  r.link ? active = '✅ Активен' : active = '❌ Не активен'
+  user.link ? active = '✅ Активен' : active = '❌ Не активен'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "Сканер: <b>" + active + "</b>\n"  +"UserID: <b>" + user.userId + "</b>\n" + "Имя: <b>" + user.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Дата начала промо: <b>" + promoDate.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Платеж: <b>" + user.payment + "</b>\n" + "Ссылка: " + user.link + "\n" + "ID прокси: " + user.proxyId
   ctx.replyWithHTML(msg)
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
+  } finally{
+    mongoClient.close()
   }
 })
 
@@ -394,7 +398,7 @@ admin.command('ap', async (ctx) => { // /addpromo
   await colUsers.updateOne({userId: Number.parseInt(com[0])}, {$set: {promoDate: new Date(Date.now()), nextpay: new Date(Date.now()+hour)}})
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
   await checkStatus(user)
-
+  await mongoClient.connect();
   let updatedUser = await colUsers.findOne({userId: Number.parseInt(com[0])})
   let date = new Date(updatedUser.promoDate)
   let nextPay = new Date(user.nextpay)
@@ -404,6 +408,8 @@ admin.command('ap', async (ctx) => { // /addpromo
   ctx.replyWithHTML(msg)
   } catch (e) {
     console.log(e)
+  } finally{
+    mongoClient.close()
   }
 })
 
@@ -445,9 +451,10 @@ admin.command('ban', async (ctx) => {
   await colUsers.updateOne({userId: Number.parseInt(com[0])}, {$set: {ban: 1}}, {upsert: true})
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
   ctx.replyWithHTML('Пользователь ' + com[0] + ' забанен. ' + 'user.ban: ' + user.ban)
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
+  } finally{
+    mongoClient.close()
   }
 })
 
@@ -460,9 +467,10 @@ admin.command('unban', async (ctx) => {
   await colUsers.updateOne({userId: Number.parseInt(com[0])}, {$set: {ban: ""}}, {upsert: true})
   let user = await colUsers.findOne({userId: Number.parseInt(com[0])})
   ctx.replyWithHTML('Пользователь ' + com[0] + ' разбанен. ' + 'user.ban: ' + user.ban)
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
+  } finally{
+    mongoClient.close()
   }
 })
 
