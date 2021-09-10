@@ -121,7 +121,7 @@ getAds().then(newAds => {
                 continue
             }; 
             storedAds.add(i.link);
-            i.description = i.description.slice(0, 249);
+            i.description = i.description.slice(0, 249).replace(/<|>/,'')
             let formAds = "🔔 <b>Новое объявление</b> 🔔\n\n<b>" + i.title + "</b>" + "\nСтоимость: <b>" + i.price  + "</b>" + "\n<b>" + i.address + "</b>\n\n" + i.description + "\n\nДата поднятия: <b>" + i.date + "</b>\n" +  "<b>" + i.username + "\n" + i.usertype +"</b>" + "\nhttps://avito.ru" + i.link;
             TgMsg = formAds;
             try {

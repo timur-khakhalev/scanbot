@@ -98,9 +98,9 @@ scanScene.hears(/avito.ru/, async (ctx) => {
     } else {
     let buff = ctx.message.text.replace(/-(\w){10,50}\??/, '?');
     ctx.session.editedLink = buff.replace(/m\./, '')
-    await ctx.reply(`Я сохранил и отредактировал вашу ссылку, удалив лишнее: ${ctx.session.editedLink}. \n\nЗапускаем?`, Extra.markup((m) =>
+    await ctx.reply(`Я сохранил и отредактировал вашу ссылку, удалив лишнее: ${ctx.session.editedLink}. \n\nЗапускать?`, Extra.markup((m) =>
     m.inlineKeyboard([
-        m.callbackButton('Запускаем!', 'scan'),
+        m.callbackButton('Запускать!', 'scan'),
         m.callbackButton('Прислать другую ссылку', 'another_link')
     ])))
   }
@@ -160,7 +160,7 @@ scanScene.action('scan', async (ctx) => {
     } else if (findNotBusy.counts < 1) {
       let date = new Date();
       await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin1: date.getMinutes(), startSec1: date.getSeconds(), counts: 1, link1: msg}}, {upsert:true})
-      await ctx.reply('Запускаем')
+      await ctx.reply('Запускаю Сканер')
       loadWorker(msg, userId, findNotBusy.proxyId);
       await colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
       await ctx.scene.leave()
@@ -175,10 +175,9 @@ scanScene.action('scan', async (ctx) => {
       if (findNotBusy.startMin1%2 != nowDate.getMinutes()%2) minute = 60; // Проверяем чтоб второй скрипт запустился в следующую минуту
       let sleepTime = 60 - nowDate.getSeconds() + findNotBusy.startSec1;
       if (findNotBusy.startSec1 != nowDate.getSeconds()) { // Если сохраненная секунда не равна текущей, то ждем еще минуту...
-          ctx.reply('Запускаем..');
-          let Date2 = new Date();
+          ctx.reply('Запускаю Сканер!');
           try {
-          colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds(), counts: 2, link2: msg}}, {upsert:true})
+          colProxy.updateOne({proxyId: findNotBusy.proxyId}, {$set: {userId2: ctx.from.id, counts: 2, link2: msg}}, {upsert:true})
           .then(() => console.log("itsok"),
           (err) => console.log('itserr: ' + err))
 
@@ -188,16 +187,17 @@ scanScene.action('scan', async (ctx) => {
           } catch (e) {
             console.log(e)
           }
-          setTimeout(() => {
+          setTimeout(async () => {
+          let Date2 = new Date();
           loadWorker(msg, userId, findNotBusy.proxyId);
+          await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds()}}, {upsert:true})
           ctx.scene.leave();
           }, (sleepTime + minute)*1000) // Ставим отложенный старт на определенное кол-во сек.
         }
         else { // ... Иначе, запускаем прямо сейчас, при условии что совпадает четность у сохраненной и текущей минут. 
-          ctx.reply('Запускаем..');
-          let Date2 = new Date();
+          ctx.reply('Запускаю Сканер!');
           try {
-          colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds(), counts: 2, link2: msg}}, {upsert:true})
+          colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId2: ctx.from.id, counts: 2, link2: msg}}, {upsert:true})
           .then(() => console.log("itsok"),
           (err) => console.log('itserr: ' + err))
           colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
@@ -206,8 +206,10 @@ scanScene.action('scan', async (ctx) => {
           } catch (e) {
             console.log(e)
           }
-          setTimeout(() => {
+          setTimeout(async () => {
+          let Date2 = new Date();
           loadWorker(msg, userId, findNotBusy.proxyId);
+          await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {startMin2: Date2.getMinutes(), startSec2: Date2.getSeconds()}}, {upsert:true})
           ctx.scene.leave();
           }, (minute)*1000)
         }
@@ -216,10 +218,10 @@ scanScene.action('scan', async (ctx) => {
           if (findNotBusy.startMin2%2 != nowDate.getMinutes()%2) minute = 60; // Проверяем чтоб второй скрипт запустился в следующую минуту
           let sleepTime = 60 - nowDate.getSeconds() + findNotBusy.startSec2;
           if (findNotBusy.startSec2 != nowDate.getSeconds()) { // Если сохраненная секунда не равна текущей, то ждем еще минуту...
-            ctx.reply('Запускаем..');
-            let Date2 = new Date();
+            ctx.reply('Запускаю Сканер!');
+            
             try {
-            colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin1: Date2.getMinutes(), startSec1: Date2.getSeconds(), counts: 2, link1: msg}}, {upsert:true})
+            colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, counts: 2, link1: msg}}, {upsert:true})
             .then(() => console.log("itsok"),
             (err) => console.log('itserr: ' + err))
             colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
@@ -228,16 +230,18 @@ scanScene.action('scan', async (ctx) => {
             } catch (e) {
               console.log(e)
             }
-            setTimeout(() => {
+            setTimeout(async () => {
+            let Date2 = new Date();
             loadWorker(msg, userId, findNotBusy.proxyId);
+            await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {startMin1: Date2.getMinutes(), startSec1: Date2.getSeconds()}}, {upsert:true})
             ctx.scene.leave();
             }, (sleepTime + minute)*1000) // Ставим отложенный старт на определенное кол-во сек.
           }
           else { // ... Иначе, запускаем прямо сейчас, при условии что совпадает четность у сохраненной и текущей минут. 
-            ctx.reply('Запускаем..');
-            let Date2 = new Date();
+            ctx.reply('Запускаю Сканер!');
+            
             try {
-            colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, startMin1: Date2.getMinutes(), startSec1: Date2.getSeconds(), counts: 2, link1: msg}}, {upsert:true})
+            colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {userId1: ctx.from.id, counts: 2, link1: msg}}, {upsert:true})
             .then(() => console.log("itsok"),
             (err) => console.log('itserr: ' + err))
             colUsers.updateOne({userId: userId}, {$set: {proxyId: findNotBusy.proxyId, link: msg}}, {upsert: true})
@@ -246,8 +250,10 @@ scanScene.action('scan', async (ctx) => {
             } catch (e) {
               console.log(e)
             }
-            setTimeout(() => {
+            setTimeout(async () => {
+            let Date2 = new Date();
             loadWorker(msg, userId, findNotBusy.proxyId);
+            await colProxy.updateOne({proxyId: findNotBusy.proxyId},{$set: {startMin1: Date2.getMinutes(), startSec1: Date2.getSeconds()}}, {upsert:true})
             ctx.scene.leave();
             }, (minute)*1000)
           }
@@ -262,7 +268,7 @@ bot.use(stage.middleware())
 bot.command('start', (ctx) => ctx.scene.enter('super-wizard'))
 
 bot.command('stop', async (ctx) => {
-    await ctx.reply('Останавливаем')
+    await ctx.reply('Останавливаю Сканер')
     try {
       await mongoClient.connect();
       const db = mongoClient.db(dbName)
@@ -322,8 +328,10 @@ admin.command("glu", async (ctx) => { // /getlastusers
     let i = Date.parse(r.nextpay)
     let date = new Date(i)
     let status
-    r.status == 'paid' ? status = 'Оплачено' : status = 'Не оплачено'
-    return "Статус аккаунта: <b>" + status + "</b>\n" + "UserID: <b>" + r.userId + "</b>\n" + "Имя: <b>" + r.name + "</b>\n" + "Начало промо: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n\n"
+    r.status == 'paid' ? status = '✅ Оплачено' : status = '❌ Не оплачено'
+    let active
+    r.link ? active = '✅ Активен' : active = '❌ Не активен'
+    return "Статус аккаунта: <b>" + status + "</b>\n" + "Сканер: <b>" + active + "</b>\n" + "UserID: <b>" + r.userId + "</b>\n" + "Имя: <b>" + r.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n\n"
   }).limit(Number.parseInt(com[0])).sort({"_id":-1}).toArray()
   let msg = '';
   for(let i of arr) {
@@ -347,7 +355,7 @@ admin.command('au', async (ctx) => { // /adduser
   let updatedUser = await colUsers.findOne({userId: Number.parseInt(com[0])})
   let date = new Date(updatedUser.nextpay)
   let status
-  updatedUser.status == 'paid' ? status = 'Оплачено' : status = 'Не оплачено'
+  updatedUser.status == 'paid' ? status = '✅ Оплачено' : status = '❌ Не оплачено'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "UserID: <b>" + updatedUser.userId + "</b>\n" + "Имя: <b>" + updatedUser.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>"
   ctx.replyWithHTML(msg)
   await mongoClient.close();
@@ -365,8 +373,10 @@ admin.command('gu', async (ctx) => { // /getuser
   let date = new Date(user.nextpay)
   let promoDate = new Date(user.promoDate)
   let status
-  user.status == 'unpaid' ? status = 'Не оплачено' : status = 'Оплачено'
-  let msg = "Статус аккаунта: <b>" + status + "</b>\n" +"UserID: <b>" + user.userId + "</b>\n" + "Имя: <b>" + user.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Дата начала промо: <b>" + promoDate.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Платеж: <b>" + user.payment + "</b>\n" + "Ссылка: " + user.link + "\n" + "ID прокси: " + user.proxyId
+  user.status == 'paid' ? status = '✅ Оплачено' : status = '❌ Не оплачено'
+  let active
+  r.link ? active = '✅ Активен' : active = '❌ Не активен'
+  let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "Сканер: <b>" + active + "</b>\n"  +"UserID: <b>" + user.userId + "</b>\n" + "Имя: <b>" + user.name + "</b>\n" + "Следующий платеж: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Дата начала промо: <b>" + promoDate.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Платеж: <b>" + user.payment + "</b>\n" + "Ссылка: " + user.link + "\n" + "ID прокси: " + user.proxyId
   ctx.replyWithHTML(msg)
   await mongoClient.close();
   } catch (e) {
@@ -392,7 +402,6 @@ admin.command('ap', async (ctx) => { // /addpromo
   updatedUser.status == 'unpaid' ? status = 'Не оплачено' : status = 'Оплачено'
   let msg = "Статус аккаунта: <b>" + status + "</b>\n" + "UserID: <b>" + updatedUser.userId + "</b>\n" + "Имя: <b>" + updatedUser.name + "</b>\n" + "Промо обновлено: <b>" + date.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n" + "Следующий платеж: <b>" + nextPay.toLocaleString('ru-RU', { timeZone:"Europe/Moscow", year: 'numeric', weekday: 'short', month: 'short', day: 'numeric', minute:'2-digit', hour:'2-digit'}) + "</b>\n"
   ctx.replyWithHTML(msg)
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -409,7 +418,6 @@ admin.command('all', async (ctx) => {
       tgbot.sendMessage(res.userId, msg)
     }, 300)
   }).toArray()
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
@@ -423,7 +431,6 @@ admin.command('gp', async (ctx) => {
   colProxy.find({}).map((res) => {
     return ctx.replyWithHTML("proxyId: <b>" + res.proxyId + "</b>\n" + "counts: <b>" + res.counts + "</b>\n" + "startMin1: <b>" + res.startMin1 + "</b>\n" + "startSec1: <b>" + res.startSec1 + "</b>\n" + "userId1: <b>" + res.userId1 + "</b>\n" + "link1: " + res.link1 + "\n" + "startMin2: <b>" + res.startMin2 + "</b>\n" + "startSec2: <b>" + res.startSec2 + "</b>\n" + "userId2: <b>" + res.userId2 + "</b>\n" + "link2: " + res.link2, {disable_web_page_preview:'true'})
   }).toArray()
-  await mongoClient.close();
   } catch (e) {
     console.log(e)
   }
