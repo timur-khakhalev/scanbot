@@ -1,8 +1,6 @@
-
 var amqp = require('amqplib/callback_api');
 var avito = require('./avito')
 require('dotenv').config()
-
 
 amqp.connect('amqp://guest:'+process.env.RABBIT_PASSWORD+'@rabbitmq', function(error0, connection) {
   if (error0) {

@@ -52,6 +52,8 @@ startScan = (parseLink, chatId, idProxy) => {
     await mongoClient.close();
 getAds = async () => {
     
+    let errcheck;
+
     let logTime = new Date()
     console.log('Iteration. storedAds.size=' + storedAds.size + " proxy id: " + idProxy + " link: " + parseLink + "\ntime: " +  + logTime.getHours().toLocaleString() + ":" + logTime.getMinutes() + ":" + logTime.getSeconds())
     let agent = new httpsProxyAgent(`http://${getProxy.login}:${getProxy.password}@${getProxy.host}:${getProxy.port}`);
@@ -66,14 +68,28 @@ getAds = async () => {
             },
             httpsAgent: agent
         }).catch(e => {
-            if(e.response.status >= 500) {
+            if(e.status >= 500) {
+                console.log('ща попробуем еще раз ' + e.message)
                 setTimeout(()=>{
                     console.log('trying again!')
                     getHTML(parseLink)
                 }, 5000)
+            } else {
+                if(errcheck <=3 ) {
+                    errcheck++
+                    let errmsg = e.message + '\n\n' + 'userId: ' + chatId + ' proxyId: ' + idProxy + ' link: ' + parseLink + '\n\nЗафетчу еще раз через 5 сек.'
+                    bot.sendMessage(1045450, errmsg)
+                    console.log(e.message)
+                    return setTimeout(() => {
+                        getHTML(parseLink)
+                    }, 5000)
+                } else {
+                    errcheck = 0;
+                    return console.log(e.message)
+                }
+            
             }
-            console.log(e.message)
-        })
+        }) || ''
         return cheerio.load(data);
     } 
 
@@ -91,9 +107,20 @@ getAds = async () => {
             }
             newAds.push(somedata);
         })
-        return newAds
+        if (newAds) return newAds
+        else {
+            getHTML(parseLink)
+            console.log('Повторное отправление')
+        }
         } catch (e) {
-    console.log(e)
+            if (e >= 500) {
+                console.log('Повторный проход через 5 сек')
+                setTimeout(()=> {
+                    getHTML(parseLink)
+                }, 5000)
+            } else {
+                console.log(e)
+            }
 }
         }
 getAds().then(newAds => {
@@ -102,17 +129,19 @@ getAds().then(newAds => {
         data = [];
         for (let i of newAds) {
             if ((i.address) === undefined)  {continue};
-            storedAds.add(i.link);            
+            storedAds.add(i.link);
         }
-        try {
-        if (user.link) {
-        let TgMsg = `Я проверил страницу и жду новых объявлений! Если вы хотите остановить работу Сканнера, отправьте команду /stop`;
-        bot.sendMessage(chatId, TgMsg, {parse_mode: 'HTML'})
         newAds.length = 0;
-        }
-        } catch (e) {
-            console.log(e)
-        }
+        // try {
+        // if (user.link) {
+        //     ///////////////\\\\\\\\\\\\\\\\\\\\\\\\/////////// удалить
+        // let TgMsg = `Я проверил страницу и жду новых объявлений! Если вы хотите остановить работу Сканнера, отправьте команду /stop`;
+        // bot.sendMessage(chatId, TgMsg, {parse_mode: 'HTML'})
+        
+        // }
+        // } catch (e) {
+        //     console.log(e)
+        // }
     } else { // второй и последующие проходы
         
         for(let i of newAds) {
@@ -121,8 +150,9 @@ getAds().then(newAds => {
                 continue
             }; 
             storedAds.add(i.link);
-            i.description = i.description.slice(0, 249).replace(/<|>/,'')
-            let formAds = "🔔 <b>Новое объявление</b> 🔔\n\n<b>" + i.title + "</b>" + "\nСтоимость: <b>" + i.price  + "</b>" + "\n<b>" + i.address + "</b>\n\n" + i.description + "\n\nДата поднятия: <b>" + i.date + "</b>\n" +  "<b>" + i.username + "\n" + i.usertype +"</b>" + "\nhttps://avito.ru" + i.link;
+            i.description = i.description.slice(0, 249)
+            let desc = i.description.replace(/<|>/g,'')
+            let formAds = "🔔 <b>Новое объявление</b> 🔔\n\n<b>" + i.title + "</b>" + "\nСтоимость: <b>" + i.price  + "</b>" + "\n<b>" + i.address + "</b>\n\n" + desc + "\n\nДата поднятия: <b>" + i.date + "</b>\n" +  "<b>" + i.username + "\n" + i.usertype +"</b>" + "\nhttps://avito.ru" + i.link;
             TgMsg = formAds;
             try {
                 bot.sendMessage(chatId, TgMsg, {parse_mode: 'HTML'})
@@ -135,11 +165,13 @@ getAds().then(newAds => {
 });
 };
 mainAds();
-stopScan = setInterval(mainAds, (() => {
-  min = Math.ceil(115000);
-  max = Math.floor(125000);
-  return Math.floor(Math.random() * (max - min)) + min;
-})());
+stopScan = setInterval(mainAds, 120000
+// (() => {
+//   min = Math.ceil(115000);
+//   max = Math.floor(125000);
+//   return Math.floor(Math.random() * (max - min)) + min;
+// })()
+);
 };
 
 module.exports.startScan = startScan;
